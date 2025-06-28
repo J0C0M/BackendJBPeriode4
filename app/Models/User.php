@@ -82,11 +82,29 @@ class User extends Authenticatable
         return $this->hasMany(Friendship::class, 'addressee_id');
     }
 
-    public function friends(): BelongsToMany
+    /**
+     * Get all accepted friends (many-to-many)
+     */
+    public function friends()
     {
-        return $this->belongsToMany(User::class, 'friendships', 'requester_id', 'addressee_id')
-            ->wherePivot('status', 'accepted')
-            ->withTimestamps();
+        $friendIds = \App\Models\Friendship::where(function($q) {
+            $q->where('requester_id', $this->id)
+              ->orWhere('addressee_id', $this->id);
+        })->where('status', 'accepted')
+          ->get()
+          ->map(function($friendship) {
+              return $friendship->requester_id == $this->id ? $friendship->addressee_id : $friendship->requester_id;
+          });
+        
+        return self::whereIn('id', $friendIds);
+    }
+
+    /**
+     * Check if the user is friends with another user
+     */
+    public function isFriendWith(User $user): bool
+    {
+        return $this->friends()->where('id', $user->id)->exists();
     }
 
     // Settings and comments
@@ -112,12 +130,6 @@ class User extends Authenticatable
         return $total > 0 ? ($this->games_won / $total) * 100 : 0;
     }
 
-    public function isFriendWith(User $user): bool
-    {
-        return $this->friends()->where('users.id', $user->id)->exists() ||
-            $user->friends()->where('users.id', $this->id)->exists();
-    }
-
     public function hasPendingFriendRequestFrom(User $user): bool
     {
         return $this->receivedFriendRequests()
@@ -126,11 +138,31 @@ class User extends Authenticatable
             ->exists();
     }
 
+    /**
+     * Check if the user has sent a friend request to another user
+     */
     public function hasSentFriendRequestTo(User $user): bool
     {
-        return $this->sentFriendRequests()
+        return \App\Models\Friendship::where('requester_id', $this->id)
             ->where('addressee_id', $user->id)
             ->where('status', 'pending')
             ->exists();
+    }
+
+    public function hasReceivedFriendRequestFrom(User $user): bool
+    {
+        return $this->hasPendingFriendRequestFrom($user);
+    }
+
+    /**
+     * Get the user's completed game history
+     */
+    public function getGameHistory()
+    {
+        return \App\Models\Game::where(function($query) {
+            $query->where('player1_id', $this->id)
+                ->orWhere('player2_id', $this->id);
+        })->where('status', 'completed')
+          ->orderBy('completed_at', 'desc');
     }
 }

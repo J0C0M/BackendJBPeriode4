@@ -71,6 +71,14 @@ class Game extends Model
         return $this->morphMany(Comment::class, 'commentable');
     }
 
+    /**
+     * Get all players in the game as a collection
+     */
+    public function players()
+    {
+        return collect([$this->player1, $this->player2])->filter();
+    }
+
     // Helper methods
     public function getOpponent(User $user): ?User
     {
