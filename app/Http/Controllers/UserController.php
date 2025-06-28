@@ -92,9 +92,9 @@ class UserController extends Controller
             if ($currentUser->isFriendWith($user)) {
                 $friendshipStatus = 'friends';
             } elseif ($currentUser->hasSentFriendRequestTo($user)) {
-                $friendshipStatus = 'request_sent';
+                $friendshipStatus = 'pending_sent';
             } elseif ($currentUser->hasPendingFriendRequestFrom($user)) {
-                $friendshipStatus = 'request_received';
+                $friendshipStatus = 'pending_received';
             } else {
                 $friendshipStatus = 'none';
             }
