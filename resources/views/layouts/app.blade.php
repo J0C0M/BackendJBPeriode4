@@ -13,34 +13,6 @@
 
     <!-- Scripts -->
     @vite(['resources/css/app.css', 'resources/js/app.js'])
-    
-    <!-- Additional Styles -->
-    <style>
-        .wordle-tile {
-            @apply w-12 h-12 border-2 border-gray-300 flex items-center justify-center text-xl font-bold uppercase;
-        }
-        .wordle-tile.correct {
-            @apply bg-green-500 border-green-500 text-white;
-        }
-        .wordle-tile.wrong-position {
-            @apply bg-yellow-500 border-yellow-500 text-white;
-        }
-        .wordle-tile.incorrect {
-            @apply bg-gray-500 border-gray-500 text-white;
-        }
-        .keyboard-key {
-            @apply px-3 py-2 m-1 rounded bg-gray-200 hover:bg-gray-300 font-semibold cursor-pointer transition-colors;
-        }
-        .keyboard-key.correct {
-            @apply bg-green-500 text-white;
-        }
-        .keyboard-key.wrong-position {
-            @apply bg-yellow-500 text-white;
-        }
-        .keyboard-key.incorrect {
-            @apply bg-gray-500 text-white;
-        }
-    </style>
 </head>
 <body class="font-sans antialiased bg-gray-50">
     <div class="min-h-screen">
