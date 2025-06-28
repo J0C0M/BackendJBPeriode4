@@ -31,15 +31,33 @@
 
         <!-- Game Grid -->
         <div class="grid grid-cols-5 gap-2 mb-6" id="wordle-grid">
+            @php
+                $playerMoves = $game->moves()->where('player_id', auth()->id())->orderBy('attempt_number')->get();
+            @endphp
             @for($row = 0; $row < ($game->max_attempts ?? 6); $row++)
+                @php
+                    $move = $playerMoves[$row] ?? null;
+                    $letters = $move ? str_split($move->guessed_word) : [];
+                    $results = $move ? $move->result : [];
+                @endphp
                 @for($col = 0; $col < 5; $col++)
-                    <div class="wordle-tile" 
+                    @php
+                        $letter = $letters[$col] ?? '';
+                        $result = $results[$col] ?? null;
+                        $tileClass = 'bg-white border-gray-300';
+                        if ($result === 'correct') {
+                            $tileClass = 'bg-green-500 text-white border-green-600';
+                        } elseif ($result === 'wrong_position') {
+                            $tileClass = 'bg-orange-400 text-white border-orange-600';
+                        } elseif ($result === 'incorrect') {
+                            $tileClass = 'bg-gray-400 text-white border-gray-500';
+                        }
+                    @endphp
+                    <div class="wordle-tile flex items-center justify-center h-12 w-12 rounded-md border font-bold text-xl uppercase {{ $tileClass }}" 
                          data-row="{{ $row }}" 
                          data-col="{{ $col }}"
                          id="tile-{{ $row }}-{{ $col }}">
-                        @if(isset($moves) && isset($moves[$row]) && isset($moves[$row][$col]))
-                            {{ $moves[$row][$col] }}
-                        @endif
+                        {{ $letter }}
                     </div>
                 @endfor
             @endfor
