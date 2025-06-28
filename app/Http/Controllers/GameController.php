@@ -21,15 +21,45 @@ class GameController extends Controller
     {
         $user = Auth::user();
 
-        $games = Game::where(function($query) use ($user) {
+        $activeGames = Game::where(function($query) use ($user) {
+            $query->where('player1_id', $user->id)
+                ->orWhere('player2_id', $user->id);
+        })->where('status', 'in_progress')
+          ->with(['player1', 'player2', 'winner', 'word'])
+          ->orderBy('created_at', 'desc')
+          ->get();
+
+        $pendingGames = Game::where('player2_id', $user->id)
+            ->where('status', 'pending')
+            ->with(['player1', 'player2', 'winner', 'word'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $completedGames = Game::where(function($query) use ($user) {
+            $query->where('player1_id', $user->id)
+                ->orWhere('player2_id', $user->id);
+        })->where('status', 'completed')
+          ->with(['player1', 'player2', 'winner', 'word'])
+          ->orderBy('completed_at', 'desc')
+          ->get();
+
+        $gameHistory = Game::where(function($query) use ($user) {
             $query->where('player1_id', $user->id)
                 ->orWhere('player2_id', $user->id);
         })
+            ->where('status', 'completed')
             ->with(['player1', 'player2', 'winner', 'word'])
-            ->orderBy('created_at', 'desc')
-            ->paginate(10);
+            ->orderBy('completed_at', 'desc')
+            ->paginate(20);
 
-        return view('games.index', compact('games'));
+        $stats = [
+            'total_wins' => $user->games_won,
+            'total_losses' => $user->games_lost,
+            'active_games' => $activeGames->count(),
+            'pending_invitations' => $pendingGames->count(),
+        ];
+
+        return view('games.index', compact('activeGames', 'pendingGames', 'completedGames', 'gameHistory', 'stats'));
     }
 
     public function create()
@@ -43,32 +73,21 @@ class GameController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'game_type' => 'required|in:random,friend',
-            'opponent_id' => 'required_if:game_type,friend|exists:users,id',
-            'max_attempts' => 'nullable|integer|min:3|max:10',
+            'opponent_id' => 'required|exists:users,id',
         ]);
 
         $user = Auth::user();
-        $maxAttempts = $request->max_attempts ?? 6;
+        $opponent = User::findOrFail($request->input('opponent_id'));
 
-        // Get random word
-        $word = Word::getRandomWord();
-        if (!$word) {
-            return redirect()->back()->with('error', 'No words available for the game.');
+        // Only allow creating a game with a friend
+        if (!$user->isFriendWith($opponent)) {
+            return back()->with('error', 'You can only play with your friends.');
         }
 
-        if ($request->game_type === 'random') {
-            $opponent = $this->findRandomOpponent($user);
-            if (!$opponent) {
-                return redirect()->back()->with('error', 'No available opponents found.');
-            }
-        } else {
-            $opponent = User::findOrFail($request->opponent_id);
-
-            // Check if they are friends
-            if (!$user->isFriendWith($opponent)) {
-                return redirect()->back()->with('error', 'You can only play with friends.');
-            }
+        // Pick a random word
+        $word = \App\Models\Word::getRandomWord();
+        if (!$word) {
+            return back()->with('error', 'No words available.');
         }
 
         $game = Game::create([
@@ -76,12 +95,11 @@ class GameController extends Controller
             'player2_id' => $opponent->id,
             'word_id' => $word->id,
             'status' => 'pending',
-            'game_type' => $request->game_type,
-            'max_attempts' => $maxAttempts,
+            'game_type' => 'friend',
+            'max_attempts' => 6,
         ]);
 
-        return redirect()->route('games.show', $game)
-            ->with('success', 'Game created! Waiting for opponent to accept.');
+        return redirect()->route('games.show', $game)->with('success', 'Game created!');
     }
 
     public function show(Game $game)

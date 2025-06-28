@@ -31,7 +31,7 @@
                     </div>
                 </div>
                 <div class="ml-4">
-                    <div class="text-2xl font-bold text-gray-900">{{ $stats['total_wins'] }}</div>
+                    <div class="text-2xl font-bold text-gray-900">{{ $stats['total_wins'] ?? 0 }}</div>
                     <div class="text-sm text-gray-500">Games Won</div>
                 </div>
             </div>
@@ -47,7 +47,7 @@
                     </div>
                 </div>
                 <div class="ml-4">
-                    <div class="text-2xl font-bold text-gray-900">{{ $stats['total_losses'] }}</div>
+                    <div class="text-2xl font-bold text-gray-900">{{ $stats['total_losses'] ?? 0 }}</div>
                     <div class="text-sm text-gray-500">Games Lost</div>
                 </div>
             </div>
@@ -63,7 +63,7 @@
                     </div>
                 </div>
                 <div class="ml-4">
-                    <div class="text-2xl font-bold text-gray-900">{{ $stats['active_games'] }}</div>
+                    <div class="text-2xl font-bold text-gray-900">{{ $stats['active_games'] ?? 0 }}</div>
                     <div class="text-sm text-gray-500">Active Games</div>
                 </div>
             </div>
@@ -79,7 +79,7 @@
                     </div>
                 </div>
                 <div class="ml-4">
-                    <div class="text-2xl font-bold text-gray-900">{{ $stats['pending_invitations'] }}</div>
+                    <div class="text-2xl font-bold text-gray-900">{{ $stats['pending_invitations'] ?? 0 }}</div>
                     <div class="text-sm text-gray-500">Pending Invites</div>
                 </div>
             </div>

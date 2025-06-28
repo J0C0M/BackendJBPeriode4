@@ -166,7 +166,7 @@ Route::prefix('words')->name('words.')->group(function () {
 });
 
 // API routes
-Route::middleware('auth:sanctum')->prefix('api')->name('api.')->group(function () {
+Route::middleware('auth')->prefix('api')->name('api.')->group(function () {
     // Game API
     Route::prefix('games')->name('games.')->group(function () {
         Route::get('/{game}/state', [App\Http\Controllers\Api\GameApiController::class, 'getGameState'])->name('state');

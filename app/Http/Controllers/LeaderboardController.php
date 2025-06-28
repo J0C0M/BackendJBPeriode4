@@ -25,7 +25,35 @@ class LeaderboardController extends Controller
             'current_period' => $period
         ];
 
-        return view('leaderboard.index', $leaderboardData);
+        $stats = [
+            'total_players' => User::count(),
+            'total_games' => Game::count(),
+            'games_today' => Game::whereDate('created_at', now()->toDateString())->count(),
+            'active_games' => Game::where('status', 'in_progress')->count(),
+        ];
+
+        $leaderboards = [
+            'all_time' => $this->getAllTimeLeaderboard(10),
+            'weekly' => $this->getWeeklyLeaderboard(10),
+            'daily' => $this->getDailyLeaderboard(10),
+        ];
+
+        // Get recent activity (recent completed games)
+        $recentActivity = Game::where('status', 'completed')
+            ->with(['winner', 'player1', 'player2'])
+            ->orderBy('completed_at', 'desc')
+            ->limit(10)
+            ->get()
+            ->map(function($game) {
+                return (object) [
+                    'winner' => $game->winner,
+                    'loser' => $game->winner_id === $game->player1_id ? $game->player2 : $game->player1,
+                    'attempts' => $game->moves()->where('player_id', $game->winner_id)->count(),
+                    'created_at' => $game->completed_at
+                ];
+            });
+
+        return view('leaderboard.index', compact('stats', 'leaderboards', 'leaderboardData', 'recentActivity'));
     }
 
     /**

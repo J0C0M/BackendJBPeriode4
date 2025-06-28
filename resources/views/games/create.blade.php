@@ -33,19 +33,17 @@
                                                name="opponent_id" 
                                                value="{{ $friend->id }}" 
                                                class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300"
-                                               {{ old('opponent_id') == $friend->id ? 'checked' : '' }}>
-                                        <div class="ml-3 flex items-center">
-                                            @if($friend->avatar)
-                                                <img class="h-8 w-8 rounded-full" src="{{ Storage::url($friend->avatar) }}" alt="{{ $friend->name }}">
-                                            @else
-                                                <div class="h-8 w-8 rounded-full bg-gray-500 flex items-center justify-center text-white font-semibold">
-                                                    {{ substr($friend->name, 0, 1) }}
-                                                </div>
-                                            @endif
-                                            <div class="ml-3">
-                                                <div class="text-sm font-medium text-gray-900">{{ $friend->name }}</div>
-                                                <div class="text-sm text-gray-500">@{{ $friend->username }}</div>
+                                               required>
+                                        @if($friend->avatar)
+                                            <img class="h-8 w-8 rounded-full ml-2" src="{{ Storage::url($friend->avatar) }}" alt="{{ $friend->name }}">
+                                        @else
+                                            <div class="h-8 w-8 rounded-full bg-gray-500 flex items-center justify-center text-white font-semibold ml-2">
+                                                {{ substr($friend->name, 0, 1) }}
                                             </div>
+                                        @endif
+                                        <div class="ml-3">
+                                            <div class="text-sm font-medium text-gray-900">{{ $friend->name }}</div>
+                                            <div class="text-sm text-gray-500">@{{ $friend->username }}</div>
                                         </div>
                                     </label>
                                 @endforeach

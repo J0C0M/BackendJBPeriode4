@@ -16,23 +16,11 @@ class FriendshipController extends Controller
     public function index()
     {
         $user = Auth::user();
-
-        // Get accepted friends
-        $friends = $user->friends()->with('settings')->get();
-
-        // Get pending sent requests
-        $sentRequests = $user->sentFriendRequests()
-            ->where('status', 'pending')
-            ->with('addressee')
-            ->get();
-
-        // Get pending received requests
-        $receivedRequests = $user->receivedFriendRequests()
-            ->where('status', 'pending')
-            ->with('requester')
-            ->get();
-
-        return view('friends.index', compact('friends', 'sentRequests', 'receivedRequests'));
+        $friends = $user->friends()->get();
+        $sentRequests = $user->sentFriendRequests()->where('status', 'pending')->with('addressee')->get();
+        $receivedRequests = $user->receivedFriendRequests()->where('status', 'pending')->with('requester')->get();
+        $pendingRequests = $sentRequests->count() + $receivedRequests->count();
+        return view('friends.index', compact('friends', 'sentRequests', 'receivedRequests', 'pendingRequests'));
     }
 
     /**
@@ -49,35 +37,53 @@ class FriendshipController extends Controller
     public function search(Request $request)
     {
         $request->validate([
-            'query' => 'required|string|min:2'
+            'search' => 'required|string|min:2'
         ]);
 
-        $query = $request->input('query');
-        $currentUser = Auth::user();
+        $user = Auth::user();
+        $search = $request->input('search');
 
-        $users = User::where('id', '!=', $currentUser->id)
-            ->where(function ($q) use ($query) {
-                $q->where('username', 'LIKE', "%{$query}%")
-                    ->orWhere('email', 'LIKE', "%{$query}%")
-                    ->orWhere('name', 'LIKE', "%{$query}%");
+        // Get users matching the search, excluding current user
+        $users = User::where('id', '!=', $user->id)
+            ->where(function($query) use ($search) {
+                $query->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('username', 'LIKE', "%{$search}%");
             })
-            ->limit(20)
+            ->limit(10)
             ->get();
 
-        // Add friendship status to each user
-        $users->each(function ($user) use ($currentUser) {
-            if ($currentUser->isFriendWith($user)) {
-                $user->friendship_status = 'friends';
-            } elseif ($currentUser->hasSentFriendRequestTo($user)) {
-                $user->friendship_status = 'request_sent';
-            } elseif ($currentUser->hasPendingFriendRequestFrom($user)) {
-                $user->friendship_status = 'request_received';
-            } else {
-                $user->friendship_status = 'none';
+        // Get friendship status for each user
+        $usersWithStatus = $users->map(function($foundUser) use ($user) {
+            $friendship = \App\Models\Friendship::where(function ($query) use ($user, $foundUser) {
+                $query->where('requester_id', $user->id)
+                    ->where('addressee_id', $foundUser->id);
+            })->orWhere(function ($query) use ($user, $foundUser) {
+                $query->where('requester_id', $foundUser->id)
+                    ->where('addressee_id', $user->id);
+            })->first();
+
+            $status = 'none';
+            if ($friendship) {
+                if ($friendship->status === 'accepted') {
+                    $status = 'friends';
+                } elseif ($friendship->status === 'pending') {
+                    $status = $friendship->requester_id === $user->id ? 'pending_sent' : 'pending_received';
+                }
             }
+
+            return [
+                'id' => $foundUser->id,
+                'name' => $foundUser->name,
+                'username' => $foundUser->username,
+                'avatar' => $foundUser->avatar,
+                'friendship_status' => $status
+            ];
         });
 
-        return response()->json($users);
+        return response()->json([
+            'success' => true,
+            'users' => $usersWithStatus
+        ]);
     }
 
     /**
@@ -94,16 +100,25 @@ class FriendshipController extends Controller
 
         // Check if user is trying to add themselves
         if ($currentUser->id == $targetUserId) {
-            return back()->with('error', 'You cannot add yourself as a friend.');
+            $msg = 'You cannot add yourself as a friend.';
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
         }
 
         // Check if they are already friends
-        if ($currentUser->isFriendWith(User::find($targetUserId))) {
-            return back()->with('error', 'You are already friends with this user.');
+        $targetUser = User::find($targetUserId);
+        if ($currentUser->isFriendWith($targetUser)) {
+            $msg = 'You are already friends with this user.';
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
         }
 
         // Check if a friendship record already exists
-        $existingFriendship = Friendship::where(function ($query) use ($currentUser, $targetUserId) {
+        $existingFriendship = \App\Models\Friendship::where(function ($query) use ($currentUser, $targetUserId) {
             $query->where('requester_id', $currentUser->id)
                 ->where('addressee_id', $targetUserId);
         })->orWhere(function ($query) use ($currentUser, $targetUserId) {
@@ -113,7 +128,11 @@ class FriendshipController extends Controller
 
         if ($existingFriendship) {
             if ($existingFriendship->status === 'pending') {
-                return back()->with('error', 'A friend request is already pending.');
+                $msg = 'A friend request is already pending.';
+                if ($request->expectsJson()) {
+                    return response()->json(['success' => false, 'message' => $msg], 422);
+                }
+                return back()->with('error', $msg);
             } elseif ($existingFriendship->status === 'declined') {
                 // Update the declined request to pending
                 $existingFriendship->update([
@@ -121,115 +140,124 @@ class FriendshipController extends Controller
                     'addressee_id' => $targetUserId,
                     'status' => 'pending'
                 ]);
-                return back()->with('success', 'Friend request sent successfully.');
+                $msg = 'Friend request sent successfully.';
+                if ($request->expectsJson()) {
+                    return response()->json(['success' => true, 'message' => $msg]);
+                }
+                return back()->with('success', $msg);
             }
         }
 
         // Create new friend request
-        Friendship::create([
+        \App\Models\Friendship::create([
             'requester_id' => $currentUser->id,
             'addressee_id' => $targetUserId,
             'status' => 'pending'
         ]);
 
-        return back()->with('success', 'Friend request sent successfully.');
+        $msg = 'Friend request sent successfully.';
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true, 'message' => $msg]);
+        }
+        return back()->with('success', $msg);
     }
 
     /**
      * Accept a friend request
      */
-    public function accept(Friendship $friendship)
+    public function accept($friendshipId, Request $request)
     {
-        $currentUser = Auth::user();
+        $friendship = \App\Models\Friendship::findOrFail($friendshipId);
+        $user = Auth::user();
 
-        // Check if the current user is the addressee
-        if ($friendship->addressee_id !== $currentUser->id) {
-            return back()->with('error', 'You are not authorized to accept this request.');
-        }
-
-        // Check if the request is still pending
-        if ($friendship->status !== 'pending') {
-            return back()->with('error', 'This friend request is no longer pending.');
+        if ($friendship->addressee_id !== $user->id) {
+            $msg = 'You are not authorized to accept this request.';
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $msg], 403);
+            }
+            return back()->with('error', $msg);
         }
 
         $friendship->update(['status' => 'accepted']);
-
-        return back()->with('success', 'Friend request accepted successfully.');
+        $msg = 'Friend request accepted!';
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true, 'message' => $msg]);
+        }
+        return back()->with('success', $msg);
     }
 
     /**
      * Decline a friend request
      */
-    public function decline(Friendship $friendship)
+    public function decline($friendshipId, Request $request)
     {
-        $currentUser = Auth::user();
+        $friendship = \App\Models\Friendship::findOrFail($friendshipId);
+        $user = Auth::user();
 
-        // Check if the current user is the addressee
-        if ($friendship->addressee_id !== $currentUser->id) {
-            return back()->with('error', 'You are not authorized to decline this request.');
-        }
-
-        // Check if the request is still pending
-        if ($friendship->status !== 'pending') {
-            return back()->with('error', 'This friend request is no longer pending.');
+        if ($friendship->addressee_id !== $user->id) {
+            $msg = 'You are not authorized to decline this request.';
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $msg], 403);
+            }
+            return back()->with('error', $msg);
         }
 
         $friendship->update(['status' => 'declined']);
-
-        return back()->with('success', 'Friend request declined.');
+        $msg = 'Friend request declined.';
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true, 'message' => $msg]);
+        }
+        return back()->with('success', $msg);
     }
 
     /**
      * Cancel a sent friend request
      */
-    public function cancel(Friendship $friendship)
+    public function cancel($friendshipId)
     {
-        $currentUser = Auth::user();
+        $friendship = \App\Models\Friendship::findOrFail($friendshipId);
+        $user = Auth::user();
 
-        // Check if the current user is the requester
-        if ($friendship->requester_id !== $currentUser->id) {
+        if ($friendship->requester_id !== $user->id) {
             return back()->with('error', 'You are not authorized to cancel this request.');
         }
 
-        // Check if the request is still pending
-        if ($friendship->status !== 'pending') {
-            return back()->with('error', 'This friend request is no longer pending.');
-        }
-
         $friendship->delete();
-
         return back()->with('success', 'Friend request cancelled.');
     }
 
     /**
      * Remove a friend
      */
-    public function destroy(Request $request, User $user)
+    public function destroy(User $user)
     {
         $currentUser = Auth::user();
 
-        // Find the friendship record
-        $friendship = Friendship::where(function ($query) use ($currentUser, $user) {
+        if ($currentUser->id === $user->id) {
+            return back()->with('error', 'You cannot remove yourself as a friend.');
+        }
+
+        // Find and delete the friendship record
+        $friendship = \App\Models\Friendship::where(function ($query) use ($currentUser, $user) {
             $query->where('requester_id', $currentUser->id)
                 ->where('addressee_id', $user->id);
         })->orWhere(function ($query) use ($currentUser, $user) {
             $query->where('requester_id', $user->id)
                 ->where('addressee_id', $currentUser->id);
-        })->where('status', 'accepted')->first();
+        })->first();
 
-        if (!$friendship) {
-            return back()->with('error', 'You are not friends with this user.');
+        if ($friendship) {
+            $friendship->delete();
+            return back()->with('success', 'Friend removed successfully.');
         }
 
-        $friendship->delete();
-
-        return back()->with('success', 'Friend removed successfully.');
+        return back()->with('error', 'Friendship not found.');
     }
 
     /**
      * Block a user
      */
-    public function block(Request $request, User $user)
+    public function block(User $user)
     {
         $currentUser = Auth::user();
 
@@ -238,7 +266,7 @@ class FriendshipController extends Controller
         }
 
         // Find existing friendship record or create new one
-        $friendship = Friendship::where(function ($query) use ($currentUser, $user) {
+        $friendship = \App\Models\Friendship::where(function ($query) use ($currentUser, $user) {
             $query->where('requester_id', $currentUser->id)
                 ->where('addressee_id', $user->id);
         })->orWhere(function ($query) use ($currentUser, $user) {
@@ -253,7 +281,7 @@ class FriendshipController extends Controller
                 'status' => 'blocked'
             ]);
         } else {
-            Friendship::create([
+            \App\Models\Friendship::create([
                 'requester_id' => $currentUser->id,
                 'addressee_id' => $user->id,
                 'status' => 'blocked'
